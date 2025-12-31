@@ -1,10 +1,7 @@
 import polars as pl
 import datetime as dt
-import cvxpy as cp
 from covariance_matrix import get_covariance_matrix
-import numpy as np
 from portfolio import get_optimal_weights
-from tqdm import tqdm
 import os
 import ray
 
@@ -17,7 +14,9 @@ def load_data(name: str) -> pl.DataFrame:
 
 
 @ray.remote
-def backtest_step(alphas: pl.DataFrame, betas: pl.DataFrame, date_: dt.date, lambda_: float):
+def backtest_step(
+    alphas: pl.DataFrame, betas: pl.DataFrame, date_: dt.date, lambda_: float
+):
     alphas_slice = alphas.filter(pl.col("date").eq(date_)).sort("date")
     betas_slice = betas.filter(pl.col("date").eq(date_)).sort("date")
 
@@ -30,7 +29,9 @@ def backtest_step(alphas: pl.DataFrame, betas: pl.DataFrame, date_: dt.date, lam
     return optimal_weights.select(pl.lit(date_).alias("date"), "ticker", "weight")
 
 
-def backtest_parallel(alphas: pl.DataFrame, betas: pl.DataFrame, lambda_: float = 2.0) -> pl.DataFrame:
+def backtest_parallel(
+    alphas: pl.DataFrame, betas: pl.DataFrame, lambda_: float = 2.0
+) -> pl.DataFrame:
     ray.init(
         dashboard_host="0.0.0.0",
         dashboard_port=8265,
@@ -56,6 +57,6 @@ def backtest_parallel(alphas: pl.DataFrame, betas: pl.DataFrame, lambda_: float 
 if __name__ == "__main__":
     alphas = load_data("alphas")
     betas = load_data("betas")
-    lambda_ = 2
+    lambda_ = 1024.0
     weights = backtest_parallel(alphas, betas, lambda_)
-    weights.write_parquet("nt_backtester/data/weights.parquet")
+    weights.write_parquet(f"nt_backtester/data/weights_{int(lambda_)}.parquet")

@@ -25,6 +25,27 @@ def get_stock_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     )
 
 
+def get_etf_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
+    clickhouse_client = get_clickhouse_client()
+
+    stock_returns_arrow = clickhouse_client.query_arrow(
+        f"""
+        SELECT
+            date,
+            ticker,
+            return 
+        FROM etf_returns
+        WHERE date BETWEEN '{start}' AND '{end}'
+        """
+    )
+
+    return (
+        pl.from_arrow(stock_returns_arrow)
+        .with_columns(pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"))
+        .sort("ticker", "date")
+    )
+
+
 def get_alphas(start: dt.date, end: dt.date, signal_name: str) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
 
@@ -147,6 +168,7 @@ def download_data():
     get_stock_returns(start, end).write_parquet(
         "nt_backtester/data/stock_returns.parquet"
     )
+    get_etf_returns(start, end).write_parquet("nt_backtester/data/etf_returns.parquet")
     get_alphas(start, end, signal_name).write_parquet(
         "nt_backtester/data/alphas.parquet"
     )
