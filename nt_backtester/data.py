@@ -24,6 +24,7 @@ def get_stock_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
         .sort("ticker", "date")
     )
 
+
 def get_alphas(start: dt.date, end: dt.date, signal_name: str) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
 
@@ -45,6 +46,7 @@ def get_alphas(start: dt.date, end: dt.date, signal_name: str) -> pl.DataFrame:
         .with_columns(pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"))
         .sort("ticker", "date")
     )
+
 
 def get_factor_loadings(start: dt.date, end: dt.date) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
@@ -68,6 +70,7 @@ def get_factor_loadings(start: dt.date, end: dt.date) -> pl.DataFrame:
         .sort("ticker", "date", "factor")
     )
 
+
 def get_idio_vol(start: dt.date, end: dt.date) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
 
@@ -89,6 +92,7 @@ def get_idio_vol(start: dt.date, end: dt.date) -> pl.DataFrame:
         .sort("ticker", "date")
     )
 
+
 def get_factor_covariances(start: dt.date, end: dt.date) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
 
@@ -106,16 +110,26 @@ def get_factor_covariances(start: dt.date, end: dt.date) -> pl.DataFrame:
         .sort("factor_1", "factor_2", "date")
     )
 
+
 def download_data():
     start = dt.date(2020, 7, 28)
     end = dt.date(2025, 12, 29)
-    signal_name = 'reversal'
+    signal_name = "reversal"
 
-    get_stock_returns(start, end).write_parquet("nt_backtester/data/stock_returns.parquet")
-    get_alphas(start, end, signal_name).write_parquet("nt_backtester/data/alphas.parquet")
-    get_factor_loadings(start, end).write_parquet("nt_backtester/data/factor_loadings.parquet")
+    get_stock_returns(start, end).write_parquet(
+        "nt_backtester/data/stock_returns.parquet"
+    )
+    get_alphas(start, end, signal_name).write_parquet(
+        "nt_backtester/data/alphas.parquet"
+    )
+    get_factor_loadings(start, end).write_parquet(
+        "nt_backtester/data/factor_loadings.parquet"
+    )
     get_idio_vol(start, end).write_parquet("nt_backtester/data/idio_vol.parquet")
-    get_factor_covariances(start, end).write_parquet("nt_backtester/data/factor_covariances.parquet")
+    get_factor_covariances(start, end).write_parquet(
+        "nt_backtester/data/factor_covariances.parquet"
+    )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     download_data()
