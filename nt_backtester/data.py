@@ -111,6 +111,34 @@ def get_factor_covariances(start: dt.date, end: dt.date) -> pl.DataFrame:
     )
 
 
+def get_betas(start: dt.date, end: dt.date) -> pl.DataFrame:
+    clickhouse_client = get_clickhouse_client()
+
+    factor_covariances_arrow = clickhouse_client.query_arrow(
+        f"""
+        SELECT 
+            u.ticker,
+            u.date,
+            f.factor,
+            f.loading
+        FROM universe u
+        INNER JOIN factor_loadings f ON u.date = f.date AND u.ticker = f.ticker
+        WHERE u.date BETWEEN '{start}' AND '{end}'
+            AND f.factor = 'SPY'
+        """
+    )
+
+    return (
+        pl.from_arrow(factor_covariances_arrow)
+        .select(
+            "ticker",
+            pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"),
+            pl.col("loading").alias("beta"),
+        )
+        .sort("ticker", "date")
+    )
+
+
 def download_data():
     start = dt.date(2020, 7, 28)
     end = dt.date(2025, 12, 29)
@@ -129,6 +157,7 @@ def download_data():
     get_factor_covariances(start, end).write_parquet(
         "nt_backtester/data/factor_covariances.parquet"
     )
+    get_betas(start, end).write_parquet("nt_backtester/data/betas.parquet")
 
 
 if __name__ == "__main__":

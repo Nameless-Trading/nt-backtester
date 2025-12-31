@@ -3,7 +3,7 @@ import polars as pl
 import datetime as dt
 
 
-def _load_data(name: str, date_: dt.date) -> pl.DataFrame:
+def load_data(name: str, date_: dt.date) -> pl.DataFrame:
     return (
         pl.scan_parquet(f"nt_backtester/data/{name}.parquet")
         .filter(pl.col("date").eq(date_))
@@ -54,9 +54,9 @@ def construct_covariance_matrix(
 
 
 def get_covariance_matrix(date_: dt.date):
-    factor_loadings = _load_data("factor_loadings", date_)
-    factor_covariances = _load_data("factor_covariances", date_)
-    idio_vol = _load_data("idio_vol", date_)
+    factor_loadings = load_data("factor_loadings", date_)
+    factor_covariances = load_data("factor_covariances", date_)
+    idio_vol = load_data("idio_vol", date_)
 
     tickers = idio_vol["ticker"].to_list()
 
