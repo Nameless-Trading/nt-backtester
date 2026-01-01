@@ -10,7 +10,6 @@ def _():
     import polars as pl
     import altair as alt
     import statsmodels.formula.api as smf
-
     return alt, pl, smf
 
 

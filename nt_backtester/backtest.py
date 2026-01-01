@@ -57,6 +57,6 @@ def backtest_parallel(
 if __name__ == "__main__":
     alphas = load_data("alphas")
     betas = load_data("betas")
-    lambda_ = 1024.0
+    lambda_ = 256
     weights = backtest_parallel(alphas, betas, lambda_)
     weights.write_parquet(f"nt_backtester/data/weights_{int(lambda_)}.parquet")

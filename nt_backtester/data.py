@@ -162,7 +162,7 @@ def get_betas(start: dt.date, end: dt.date) -> pl.DataFrame:
 
 def download_data():
     start = dt.date(2020, 7, 28)
-    end = dt.date(2025, 12, 29)
+    end = dt.date(2025, 12, 31)
     signal_name = "reversal"
 
     get_stock_returns(start, end).write_parquet(
