@@ -1,9 +1,10 @@
 import polars as pl
 import datetime as dt
 from covariance_matrix import get_covariance_matrix
-from portfolio import get_optimal_weights
+from portfolio import get_optimal_weights, get_active_risk
 import os
 import ray
+import numpy as np
 
 # Suppress Ray GPU warning for CPU-only usage
 os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
@@ -14,23 +15,48 @@ def load_data(name: str) -> pl.DataFrame:
 
 
 @ray.remote
-def backtest_step(
-    alphas: pl.DataFrame, betas: pl.DataFrame, date_: dt.date, lambda_: float
+def backtest_step_parallel(
+    alphas: pl.DataFrame,
+    betas: pl.DataFrame,
+    benchmark_weights: pl.DataFrame,
+    date_: dt.date,
+    lambda_: str | float,
+    target_active_risk: float | None = None,
 ):
     alphas_slice = alphas.filter(pl.col("date").eq(date_)).sort("date")
     betas_slice = betas.filter(pl.col("date").eq(date_)).sort("date")
+    benchmark_weights_slice = benchmark_weights.filter(pl.col("date").eq(date_)).sort(
+        "date"
+    )
 
     covariance_matrix = get_covariance_matrix(date_)
 
-    optimal_weights = get_optimal_weights(
-        alphas_slice, betas_slice, covariance_matrix, lambda_
-    )
+    if isinstance(lambda_, str) and lambda_ == "dynamic":
+        optimal_weights = get_optimal_weights_dynamic(
+            alphas_slice,
+            betas_slice,
+            covariance_matrix,
+            benchmark_weights_slice,
+            target_active_risk,
+        )
+
+    elif isinstance(lambda_, (int, float)):
+        optimal_weights = get_optimal_weights(
+            alphas_slice, betas_slice, covariance_matrix, lambda_
+        )
+
+    else:
+        raise ValueError(f"Lambda not supported:", lambda_)
 
     return optimal_weights.select(pl.lit(date_).alias("date"), "ticker", "weight")
 
 
 def backtest_parallel(
-    alphas: pl.DataFrame, betas: pl.DataFrame, lambda_: float = 2.0
+    alphas: pl.DataFrame,
+    betas: pl.DataFrame,
+    benchmark_weights: pl.DataFrame,
+    lambda_: str | float,
+    target_active_risk: float | None = None,
 ) -> pl.DataFrame:
     ray.init(
         dashboard_host="0.0.0.0",
@@ -44,9 +70,18 @@ def backtest_parallel(
     # Put DataFrames in Ray's object store once to avoid repeated serialization
     alphas_ref = ray.put(alphas)
     betas_ref = ray.put(betas)
+    benchmark_weights_ref = ray.put(benchmark_weights)
 
     weights_list_futures = [
-        backtest_step.remote(alphas_ref, betas_ref, date_, lambda_) for date_ in dates
+        backtest_step_parallel.remote(
+            alphas_ref,
+            betas_ref,
+            benchmark_weights_ref,
+            date_,
+            lambda_,
+            target_active_risk,
+        )
+        for date_ in dates
     ]
 
     weights_list = ray.get(weights_list_futures)
@@ -54,9 +89,141 @@ def backtest_parallel(
     return pl.concat(weights_list)
 
 
+def get_optimal_weights_dynamic(
+    alphas: pl.DataFrame,
+    betas: pl.DataFrame,
+    covariance_matrix: pl.DataFrame,
+    benchmark_weights: pl.DataFrame,
+    target_active_risk: float = 0.05,
+):
+    active_risk = float("inf")
+    lambda_ = None
+    error = 0.005
+    max_iterations = 5
+    iterations = 1
+    data = []
+
+    while abs(active_risk - target_active_risk) > error:
+        if lambda_ is None:
+            lambda_ = 100
+        else:
+            lambda_ = predict_lambda(data, target_active_risk)
+
+        optimal_weights = get_optimal_weights(alphas, betas, covariance_matrix, lambda_)
+
+        active_weights = get_active_weights(optimal_weights, benchmark_weights)
+        active_risk = get_active_risk(active_weights, covariance_matrix)
+
+        data.append((lambda_, active_risk))
+
+        if iterations >= max_iterations:
+            break
+        else:
+            iterations += 1
+
+    return optimal_weights
+
+
+def predict_lambda(data: list[tuple[float]], active_risk: float) -> float:
+    def fit_model(data: np.ndarray) -> float:
+        lambda_ = data[:, 0]
+        sigma = data[:, 1]
+
+        X = 1 / (2 * lambda_)
+
+        M = np.dot(X, sigma) / np.dot(X, X)
+
+        return M
+
+    data = np.array(data)
+
+    M = fit_model(data)
+
+    return M / (2 * active_risk)
+
+
+def backtest_step_sequential(
+    alphas: pl.DataFrame,
+    betas: pl.DataFrame,
+    benchmark_weights: pl.DataFrame,
+    date_: dt.date,
+    lambda_: str | float,
+    target_active_risk: float | None = None,
+):
+    alphas_slice = alphas.filter(pl.col("date").eq(date_)).sort("date")
+    betas_slice = betas.filter(pl.col("date").eq(date_)).sort("date")
+    benchmark_weights_slice = benchmark_weights.filter(pl.col("date").eq(date_)).sort(
+        "date"
+    )
+
+    covariance_matrix = get_covariance_matrix(date_)
+
+    if isinstance(lambda_, str) and lambda_ == "dynamic":
+        optimal_weights = get_optimal_weights_dynamic(
+            alphas_slice,
+            betas_slice,
+            covariance_matrix,
+            benchmark_weights_slice,
+            target_active_risk,
+        )
+
+    elif isinstance(lambda_, (int, float)):
+        optimal_weights = get_optimal_weights(
+            alphas_slice, betas_slice, covariance_matrix, lambda_
+        )
+
+    else:
+        raise ValueError(f"Lambda not supported:", lambda_)
+
+    return optimal_weights.select(pl.lit(date_).alias("date"), "ticker", "weight")
+
+
+def get_active_weights(
+    weights: pl.DataFrame, benchmark_weights: pl.DataFrame
+) -> pl.DataFrame:
+    return (
+        weights.join(
+            other=benchmark_weights.rename({"weight": "benchmark_weight"}).drop("date"),
+            on=["ticker"],
+            how="left",
+        )
+        .with_columns(
+            pl.col("weight").sub(pl.col("benchmark_weight")).alias("active_weight")
+        )
+        .select("ticker", "active_weight")
+    )
+
+
+def backtest_sequential(
+    alphas: pl.DataFrame,
+    betas: pl.DataFrame,
+    benchmark_weights: pl.DataFrame,
+    lambda_: str | float,
+    target_active_risk: float | None = None,
+) -> pl.DataFrame:
+    dates = alphas["date"].unique().sort().to_list()
+
+    weights_list = []
+    for date_ in dates:
+        weights = backtest_step_sequential(
+            alphas, betas, benchmark_weights, date_, lambda_, target_active_risk
+        )
+
+        weights_list.append(weights)
+
+    return pl.concat(weights_list)
+
+
 if __name__ == "__main__":
     alphas = load_data("alphas")
     betas = load_data("betas")
-    lambda_ = 256
-    weights = backtest_parallel(alphas, betas, lambda_)
-    weights.write_parquet(f"nt_backtester/data/weights_{int(lambda_)}.parquet")
+    benchmark_weights = load_data("benchmark_weights")
+
+    lambda_ = "dynamic"
+    target_active_risk = 0.05
+
+    weights = backtest_parallel(
+        alphas, betas, benchmark_weights, lambda_, target_active_risk
+    )
+
+    weights.write_parquet("nt_backtester/data/weights_star.parquet")

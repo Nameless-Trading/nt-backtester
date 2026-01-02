@@ -972,7 +972,6 @@ dependencies = [
     { name = "polars" },
     { name = "pyarrow" },
     { name = "python-dotenv" },
-    { name = "pyzmq" },
     { name = "ray", extra = ["default"] },
     { name = "statsmodels" },
     { name = "tqdm" },
@@ -982,6 +981,7 @@ dependencies = [
 dev = [
     { name = "altair" },
     { name = "marimo" },
+    { name = "pyzmq" },
 ]
 
 [package.metadata]
@@ -992,7 +992,6 @@ requires-dist = [
     { name = "polars", specifier = ">=1.36.1" },
     { name = "pyarrow", specifier = ">=22.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "pyzmq", specifier = ">=27.1.0" },
     { name = "ray", extras = ["default"], specifier = ">=2.53.0" },
     { name = "statsmodels", specifier = ">=0.14.6" },
     { name = "tqdm", specifier = ">=4.67.1" },
@@ -1002,6 +1001,7 @@ requires-dist = [
 dev = [
     { name = "altair", specifier = ">=6.0.0" },
     { name = "marimo", specifier = ">=0.18.4" },
+    { name = "pyzmq", specifier = ">=27.1.0" },
 ]
 
 [[package]]

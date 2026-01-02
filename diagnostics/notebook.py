@@ -10,12 +10,23 @@ def _():
     import polars as pl
     import altair as alt
     import statsmodels.formula.api as smf
-    return alt, pl, smf
+    import datetime as dt
+    return alt, dt, mo, pl, smf
 
 
 @app.cell
-def _(pl):
-    weights = pl.read_parquet("../nt_backtester/data/weights_256.parquet")
+def _(dt, mo):
+    start = dt.date(2021, 7, 28)
+    end = dt.date(2025, 12, 31)
+
+    view_start = mo.ui.date(label="Start Date", start=start, stop=end, value=start)
+    view_end = mo.ui.date(label="End Date", start=start, stop=end, value=end)
+    return view_end, view_start
+
+
+@app.cell
+def _(pl, view_end, view_start):
+    weights = pl.read_parquet("../nt_backtester/data/weights_star.parquet")
 
     returns = (
         pl.read_parquet("../nt_backtester/data/stock_returns.parquet")
@@ -27,18 +38,29 @@ def _(pl):
         pl.read_parquet("../nt_backtester/data/etf_returns.parquet")
         .sort("date")
         .with_columns(pl.col("return").shift(-1).over("ticker"))
-        .filter(pl.col("date").ge(weights["date"].min()))
+        .filter(pl.col("date").is_between(view_start.value, view_end.value))
         .sort("date", "ticker")
     )
-    return etf_returns, returns, weights
+
+    benchmark_returns = (
+        pl.read_parquet("../nt_backtester/data/benchmark_returns.parquet")
+        .sort("date")
+        .with_columns(
+            pl.lit("Benchmark").alias("portfolio"), pl.col("return").shift(-1)
+        )
+        .filter(pl.col("date").is_between(view_start.value, view_end.value))
+        .sort("date")
+    )
+    return benchmark_returns, etf_returns, returns, weights
 
 
 @app.cell
-def _(pl, returns, weights):
+def _(pl, returns, view_end, view_start, weights):
     reversal_returns = (
         weights.join(other=returns, on=["date", "ticker"], how="left")
         .group_by("date")
         .agg(pl.col("return").mul(pl.col("weight")).sum())
+        .filter(pl.col("date").is_between(view_start.value, view_end.value))
         .sort("date")
         .with_columns(pl.lit("Reversal").alias("portfolio"))
     )
@@ -56,32 +78,25 @@ def _(pl, reversal_returns):
 
 
 @app.cell
-def _(etf_returns, pl):
-    spy_returns = (
-        etf_returns.filter(pl.col("ticker").eq("SPY"))
-        .with_columns(
-            pl.lit("SPY").alias("portfolio"),
-        )
-        .drop("ticker")
-        .sort("date")
-    )
-    return (spy_returns,)
-
-
-@app.cell
-def _(pl, spy_returns):
-    cumulative_spy_returns = spy_returns.select(
+def _(benchmark_returns, pl):
+    cumulative_benchmark_returns = benchmark_returns.select(
         "date",
         "portfolio",
         pl.col("return").add(1).cum_prod().sub(1).mul(100).alias("cumulative_return"),
     )
-    return (cumulative_spy_returns,)
+    return (cumulative_benchmark_returns,)
 
 
 @app.cell
-def _(alt, cumulative_returns, cumulative_spy_returns, pl):
+def _(mo, view_end, view_start):
+    mo.vstack([view_start, view_end])
+    return
+
+
+@app.cell
+def _(alt, cumulative_benchmark_returns, cumulative_returns, pl):
     (
-        alt.Chart(pl.concat([cumulative_returns, cumulative_spy_returns]))
+        alt.Chart(pl.concat([cumulative_returns, cumulative_benchmark_returns]))
         .mark_line()
         .encode(
             x=alt.X("date", title=""),
@@ -93,9 +108,9 @@ def _(alt, cumulative_returns, cumulative_spy_returns, pl):
 
 
 @app.cell
-def _(pl, reversal_returns, spy_returns):
+def _(benchmark_returns, pl, reversal_returns):
     summary = (
-        pl.concat([reversal_returns, spy_returns])
+        pl.concat([reversal_returns, benchmark_returns])
         .group_by("portfolio")
         .agg(
             pl.col("return").mean().mul(252 * 100).alias("mean"),
@@ -103,6 +118,7 @@ def _(pl, reversal_returns, spy_returns):
         )
         .with_columns(pl.col("mean").truediv(pl.col("stdev")).alias("sharpe"))
         .with_columns(pl.exclude("portfolio").round(2))
+        .sort("portfolio")
     )
 
     summary
@@ -119,7 +135,7 @@ def _(etf_returns, pl, reversal_returns):
             how="left",
         )
         .rename({"return": "portfolio_return"})
-        .with_columns(pl.exclude("date").mul(100))
+        .with_columns(pl.exclude("date").mul(100 * 252))
         .sort("date")
     )
     return (regression_data,)

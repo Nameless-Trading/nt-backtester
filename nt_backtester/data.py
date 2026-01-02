@@ -1,6 +1,7 @@
 from clients import get_clickhouse_client
 import datetime as dt
 import polars as pl
+import os
 
 
 def get_stock_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
@@ -28,7 +29,7 @@ def get_stock_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
 def get_etf_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
 
-    stock_returns_arrow = clickhouse_client.query_arrow(
+    etf_returns_arrow = clickhouse_client.query_arrow(
         f"""
         SELECT
             date,
@@ -40,7 +41,7 @@ def get_etf_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     )
 
     return (
-        pl.from_arrow(stock_returns_arrow)
+        pl.from_arrow(etf_returns_arrow)
         .with_columns(pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"))
         .sort("ticker", "date")
     )
@@ -135,33 +136,69 @@ def get_factor_covariances(start: dt.date, end: dt.date) -> pl.DataFrame:
 def get_betas(start: dt.date, end: dt.date) -> pl.DataFrame:
     clickhouse_client = get_clickhouse_client()
 
-    factor_covariances_arrow = clickhouse_client.query_arrow(
+    betas_arrow = clickhouse_client.query_arrow(
         f"""
         SELECT 
             u.ticker,
             u.date,
-            f.factor,
-            f.loading
+            b.predicted_beta AS beta
         FROM universe u
-        INNER JOIN factor_loadings f ON u.date = f.date AND u.ticker = f.ticker
+        INNER JOIN betas b ON u.date = b.date AND u.ticker = b.ticker
         WHERE u.date BETWEEN '{start}' AND '{end}'
-            AND f.factor = 'SPY'
         """
     )
 
     return (
-        pl.from_arrow(factor_covariances_arrow)
-        .select(
-            "ticker",
-            pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"),
-            pl.col("loading").alias("beta"),
-        )
+        pl.from_arrow(betas_arrow)
+        .select("ticker", pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"), "beta")
         .sort("ticker", "date")
     )
 
 
+def get_benchmark_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
+    clickhouse_client = get_clickhouse_client()
+
+    benchmark_returns_arrow = clickhouse_client.query_arrow(
+        f"""
+        SELECT
+            date,
+            return
+        FROM benchmark_returns
+        WHERE date BETWEEN '{start}' AND '{end}'
+        """
+    )
+
+    return (
+        pl.from_arrow(benchmark_returns_arrow)
+        .with_columns(pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"))
+        .sort("date")
+    )
+
+
+def get_benchmark_weights(start: dt.date, end: dt.date) -> pl.DataFrame:
+    clickhouse_client = get_clickhouse_client()
+
+    benchmark_weights_arrow = clickhouse_client.query_arrow(
+        f"""
+        SELECT
+            date,
+            ticker,
+            weight
+        FROM benchmark_weights
+        WHERE date BETWEEN '{start}' AND '{end}'
+        """
+    )
+
+    return (
+        pl.from_arrow(benchmark_weights_arrow)
+        .with_columns(pl.col("date").str.strptime(pl.Date, "%Y-%m-%d"))
+        .sort("date")
+    )
+
+
 def download_data():
-    start = dt.date(2020, 7, 28)
+    os.makedirs("nt_backtester/data", exist_ok=True)
+    start = dt.date(2021, 7, 28)
     end = dt.date(2025, 12, 31)
     signal_name = "reversal"
 
@@ -180,6 +217,12 @@ def download_data():
         "nt_backtester/data/factor_covariances.parquet"
     )
     get_betas(start, end).write_parquet("nt_backtester/data/betas.parquet")
+    get_benchmark_returns(start, end).write_parquet(
+        "nt_backtester/data/benchmark_returns.parquet"
+    )
+    get_benchmark_weights(start, end).write_parquet(
+        "nt_backtester/data/benchmark_weights.parquet"
+    )
 
 
 if __name__ == "__main__":

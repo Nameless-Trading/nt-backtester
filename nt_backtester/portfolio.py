@@ -20,7 +20,7 @@ def solve_quadratic_problem(
     constraints = [
         cp.sum(weights) == 1,  # Full investment
         weights >= 0,  # Long only
-        cp.matmul(weights, betas) == 1,  # Unit Beta
+        # cp.matmul(weights, betas) == 1,  # Unit Beta
     ]
 
     problem = cp.Problem(objective, constraints)
@@ -46,3 +46,12 @@ def get_optimal_weights(
     )
 
     return pl.DataFrame({"ticker": tickers, "weight": optimal_weights})
+
+
+def get_active_risk(
+    active_weights: pl.DataFrame, covariance_matrix: pl.DataFrame
+) -> float:
+    active_weights = active_weights.sort("ticker")["active_weight"].to_numpy()
+    covariance_matrix = covariance_matrix.drop("ticker").to_numpy()
+
+    return np.sqrt(active_weights @ covariance_matrix @ active_weights.T) * np.sqrt(252)
