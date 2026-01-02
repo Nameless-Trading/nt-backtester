@@ -15,6 +15,12 @@ def _():
 
 
 @app.cell
+def _():
+    root = ".."
+    return (root,)
+
+
+@app.cell
 def _(dt, mo):
     start = dt.date(2021, 7, 28)
     end = dt.date(2025, 12, 31)
@@ -25,20 +31,21 @@ def _(dt, mo):
 
 
 @app.cell
-def _(pl, view_end, view_start):
-    weights = pl.read_parquet("../nt_backtester/data/weights_star.parquet")
+def _(pl, root, view_end, view_start):
+    weights = pl.read_parquet(f"{root}/nt_backtester/data/weights_star.parquet")
     metrics = pl.read_parquet(
-        "../nt_backtester/data/metrics_star.parquet"
-    ).with_columns(pl.col("active_risk").mul(100))
+        f"{root}/nt_backtester/data/metrics_star.parquet"
+    ).with_columns(pl.col("active_risk").mul(100)).filter(pl.col("date").is_between(view_start.value, view_end.value)).sort('date')
+
 
     returns = (
-        pl.read_parquet("../nt_backtester/data/stock_returns.parquet")
+        pl.read_parquet(f"{root}/nt_backtester/data/stock_returns.parquet")
         .sort("date")
         .with_columns(pl.col("return").shift(-1).over("ticker"))
     )
 
     etf_returns = (
-        pl.read_parquet("../nt_backtester/data/etf_returns.parquet")
+        pl.read_parquet(f"{root}/nt_backtester/data/etf_returns.parquet")
         .sort("date")
         .with_columns(pl.col("return").shift(-1).over("ticker"))
         .filter(pl.col("date").is_between(view_start.value, view_end.value))
@@ -46,7 +53,7 @@ def _(pl, view_end, view_start):
     )
 
     benchmark_returns = (
-        pl.read_parquet("../nt_backtester/data/benchmark_returns.parquet")
+        pl.read_parquet(f"{root}/nt_backtester/data/benchmark_returns.parquet")
         .sort("date")
         .with_columns(
             pl.lit("Benchmark").alias("portfolio"), pl.col("return").shift(-1)
