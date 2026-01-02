@@ -27,6 +27,9 @@ def _(dt, mo):
 @app.cell
 def _(pl, view_end, view_start):
     weights = pl.read_parquet("../nt_backtester/data/weights_star.parquet")
+    metrics = pl.read_parquet(
+        "../nt_backtester/data/metrics_star.parquet"
+    ).with_columns(pl.col("active_risk").mul(100))
 
     returns = (
         pl.read_parquet("../nt_backtester/data/stock_returns.parquet")
@@ -51,7 +54,7 @@ def _(pl, view_end, view_start):
         .filter(pl.col("date").is_between(view_start.value, view_end.value))
         .sort("date")
     )
-    return benchmark_returns, etf_returns, returns, weights
+    return benchmark_returns, etf_returns, metrics, returns, weights
 
 
 @app.cell
@@ -148,6 +151,26 @@ def _(regression_data, smf):
     results = model.fit()
 
     results.summary()
+    return
+
+
+@app.cell
+def _(alt, metrics):
+    (
+        alt.Chart(metrics)
+        .mark_line()
+        .encode(x=alt.X("date", title=""), y=alt.Y("active_risk", title="Active Risk"))
+    )
+    return
+
+
+@app.cell
+def _(alt, metrics):
+    (
+        alt.Chart(metrics)
+        .mark_line()
+        .encode(x=alt.X("date", title=""), y=alt.Y("lambda", title="Lambda"))
+    )
     return
 
 
