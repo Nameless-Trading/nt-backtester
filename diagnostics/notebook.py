@@ -22,7 +22,7 @@ def _():
 
 @app.cell
 def _(dt, mo):
-    start = dt.date(2021, 7, 28)
+    start = dt.date(2022, 7, 29) # Beginning of non-zero idio_vol data
     end = dt.date(2025, 12, 31)
 
     view_start = mo.ui.date(label="Start Date", start=start, stop=end, value=start)

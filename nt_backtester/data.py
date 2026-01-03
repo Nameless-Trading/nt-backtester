@@ -198,7 +198,7 @@ def get_benchmark_weights(start: dt.date, end: dt.date) -> pl.DataFrame:
 
 def download_data():
     os.makedirs("nt_backtester/data", exist_ok=True)
-    start = dt.date(2021, 7, 28)
+    start = dt.date(2022, 7, 29)
     end = dt.date(2025, 12, 31)
     signal_name = "reversal"
 
