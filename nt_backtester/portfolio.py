@@ -6,7 +6,6 @@ import numpy as np
 def solve_quadratic_problem(
     n_assets: int,
     alphas: np.ndarray,
-    betas: np.ndarray,
     covariance_matrix: np.ndarray,
     lambda_: float,
 ):
@@ -20,7 +19,6 @@ def solve_quadratic_problem(
     constraints = [
         cp.sum(weights) == 1,  # Full investment
         weights >= 0,  # Long only
-        # cp.matmul(weights, betas) == 1,  # Unit Beta
     ]
 
     problem = cp.Problem(objective, constraints)
@@ -31,7 +29,6 @@ def solve_quadratic_problem(
 
 def get_optimal_weights(
     alphas: pl.DataFrame,
-    betas: pl.DataFrame,
     covariance_matrix: pl.DataFrame,
     lambda_: float,
 ) -> pl.DataFrame:
@@ -40,7 +37,6 @@ def get_optimal_weights(
     optimal_weights = solve_quadratic_problem(
         n_assets=len(tickers),
         alphas=alphas["alpha"].to_numpy(),
-        betas=betas["beta"].to_numpy(),
         covariance_matrix=covariance_matrix.drop("ticker").to_numpy(),
         lambda_=lambda_,
     )
