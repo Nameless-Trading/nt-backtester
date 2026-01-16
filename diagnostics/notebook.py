@@ -16,8 +16,17 @@ def _():
 
 @app.cell
 def _():
-    root = "../"
-    return (root,)
+    root = "" # ../
+    active_risk_str = "5"
+    return active_risk_str, root
+
+
+@app.cell
+def _(mo):
+    def marimo_print(object):
+        with mo.redirect_stdout():
+            print(object)
+    return (marimo_print,)
 
 
 @app.cell
@@ -31,10 +40,11 @@ def _(dt, mo):
 
 
 @app.cell
-def _(pl, root, view_end, view_start):
-    weights = pl.read_parquet(f"{root}nt_backtester/data/weights_star.parquet")
+def _(active_risk_str, pl, root, view_end, view_start):
+    weights = pl.read_parquet(f"{root}nt_backtester/data/weights_star_{active_risk_str}.parquet")
+
     metrics = pl.read_parquet(
-        f"{root}nt_backtester/data/metrics_star.parquet"
+        f"{root}nt_backtester/data/metrics_star_{active_risk_str}.parquet"
     ).with_columns(pl.col("active_risk").mul(100)).filter(pl.col("date").is_between(view_start.value, view_end.value)).sort('date')
 
 
@@ -136,6 +146,15 @@ def _(benchmark_returns, pl, reversal_returns):
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    ## Multi-factor Regression Results (Annualized %)
+    $r_{p,t} = \alpha + \beta_{MTUM} r_{MTUM,t} + \beta_{QUAL} r_{QUAL,t} + \beta_{MKT} r_{MKT,t} + \beta_{USMV} r_{USMV,t} + \beta_{VLUE} r_{VLUE,t} + \epsilon_t$
+    """)
+    return
+
+
+@app.cell
 def _(etf_returns, pl, reversal_returns):
     regression_data = (
         reversal_returns.drop("portfolio")
@@ -152,12 +171,44 @@ def _(etf_returns, pl, reversal_returns):
 
 
 @app.cell
-def _(regression_data, smf):
+def _(marimo_print, regression_data, smf):
     formula = "portfolio_return ~ MTUM + QUAL + SPY + USMV + VLUE"
     model = smf.ols(formula=formula, data=regression_data)
     results = model.fit()
 
-    results.summary()
+    marimo_print(results.summary())
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Benchmark Regression Results (Annualized %)
+    $r_{p,t} = \alpha + \beta_{b} r_{b,t} + \epsilon_t$
+    """)
+    return
+
+
+@app.cell
+def _(benchmark_returns, pl, reversal_returns):
+    active_regression_data = (
+        pl.concat([reversal_returns, benchmark_returns])
+        .with_columns(
+            pl.col('return').mul(100 * 252)
+        )
+        .pivot(on='portfolio', index='date', values='return')
+        .rename({'Reversal': 'portfolio_return', 'Benchmark': 'benchmark_return'})
+        .sort('date')
+    )
+    return (active_regression_data,)
+
+
+@app.cell
+def _(active_regression_data, marimo_print, smf):
+    active_formula = "portfolio_return ~ benchmark_return"
+    active_model = smf.ols(formula=active_formula, data=active_regression_data)
+    active_results = active_model.fit()
+    marimo_print(active_results.summary())
     return
 
 

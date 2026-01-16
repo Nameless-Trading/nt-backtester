@@ -250,11 +250,12 @@ if __name__ == "__main__":
     benchmark_weights = load_data("benchmark_weights")
 
     lambda_ = "dynamic"
-    target_active_risk = 0.05
+    target_active_risk = 0.05 # 5% annually
 
     weights, metrics = backtest_parallel(
         alphas, benchmark_weights, lambda_, target_active_risk
     )
 
-    weights.write_parquet("nt_backtester/data/weights_star.parquet")
-    metrics.write_parquet("nt_backtester/data/metrics_star.parquet")
+    active_risk_str = str(int(target_active_risk*100))
+    weights.write_parquet(f"nt_backtester/data/weights_star_{active_risk_str}.parquet")
+    metrics.write_parquet(f"nt_backtester/data/metrics_star_{active_risk_str}.parquet")
