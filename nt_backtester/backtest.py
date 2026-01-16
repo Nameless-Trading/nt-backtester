@@ -1,7 +1,12 @@
 import polars as pl
 import datetime as dt
 from covariance_matrix import get_covariance_matrix
-from portfolio import get_optimal_weights, get_active_risk
+from portfolio import (
+    get_optimal_weights,
+    get_active_risk,
+    get_active_weights,
+    get_optimal_weights_dynamic,
+)
 import os
 import ray
 import numpy as np
@@ -23,7 +28,7 @@ def backtest_step_parallel(
     target_active_risk: float | None = None,
 ):
     alphas_slice = alphas.filter(pl.col("date").eq(date_)).sort("ticker")
-    tickers = alphas_slice['ticker'].to_list()
+    tickers = alphas_slice["ticker"].to_list()
     benchmark_weights_slice = benchmark_weights.filter(pl.col("date").eq(date_)).sort(
         "date"
     )
@@ -39,9 +44,7 @@ def backtest_step_parallel(
         )
 
     elif isinstance(lambda_, (int, float)):
-        optimal_weights = get_optimal_weights(
-            alphas_slice, covariance_matrix, lambda_
-        )
+        optimal_weights = get_optimal_weights(alphas_slice, covariance_matrix, lambda_)
         final_lambda = lambda_
         # Calculate active risk for fixed lambda
         active_weights = get_active_weights(optimal_weights, benchmark_weights_slice)
@@ -105,58 +108,6 @@ def backtest_parallel(
     return weights_df, metrics_df
 
 
-def get_optimal_weights_dynamic(
-    alphas: pl.DataFrame,
-    covariance_matrix: pl.DataFrame,
-    benchmark_weights: pl.DataFrame,
-    target_active_risk: float = 0.05,
-):
-    active_risk = float("inf")
-    lambda_ = None
-    error = 0.005
-    max_iterations = 5
-    iterations = 1
-    data = []
-
-    while abs(active_risk - target_active_risk) > error:
-        if lambda_ is None:
-            lambda_ = 100
-        else:
-            lambda_ = predict_lambda(data, target_active_risk)
-
-        optimal_weights = get_optimal_weights(alphas, covariance_matrix, lambda_)
-
-        active_weights = get_active_weights(optimal_weights, benchmark_weights)
-        active_risk = get_active_risk(active_weights, covariance_matrix)
-
-        data.append((lambda_, active_risk))
-
-        if iterations >= max_iterations:
-            break
-        else:
-            iterations += 1
-
-    return optimal_weights, lambda_, active_risk
-
-
-def predict_lambda(data: list[tuple[float]], active_risk: float) -> float:
-    def fit_model(data: np.ndarray) -> float:
-        lambda_ = data[:, 0]
-        sigma = data[:, 1]
-
-        X = 1 / (2 * lambda_)
-
-        M = np.dot(X, sigma) / np.dot(X, X)
-
-        return M
-
-    data = np.array(data)
-
-    M = fit_model(data)
-
-    return M / (2 * active_risk)
-
-
 def backtest_step_sequential(
     alphas: pl.DataFrame,
     benchmark_weights: pl.DataFrame,
@@ -165,7 +116,7 @@ def backtest_step_sequential(
     target_active_risk: float | None = None,
 ):
     alphas_slice = alphas.filter(pl.col("date").eq(date_)).sort("ticker")
-    tickers = alphas_slice['ticker'].to_list()
+    tickers = alphas_slice["ticker"].to_list()
     benchmark_weights_slice = benchmark_weights.filter(pl.col("date").eq(date_)).sort(
         "date"
     )
@@ -181,9 +132,7 @@ def backtest_step_sequential(
         )
 
     elif isinstance(lambda_, (int, float)):
-        optimal_weights = get_optimal_weights(
-            alphas_slice, covariance_matrix, lambda_
-        )
+        optimal_weights = get_optimal_weights(alphas_slice, covariance_matrix, lambda_)
         final_lambda = lambda_
         # Calculate active risk for fixed lambda
         active_weights = get_active_weights(optimal_weights, benchmark_weights_slice)
@@ -203,22 +152,6 @@ def backtest_step_sequential(
     )
 
     return weights_df, metrics_df
-
-
-def get_active_weights(
-    weights: pl.DataFrame, benchmark_weights: pl.DataFrame
-) -> pl.DataFrame:
-    return (
-        weights.join(
-            other=benchmark_weights.rename({"weight": "benchmark_weight"}).drop("date"),
-            on=["ticker"],
-            how="left",
-        )
-        .with_columns(
-            pl.col("weight").sub(pl.col("benchmark_weight")).alias("active_weight")
-        )
-        .select("ticker", "active_weight")
-    )
 
 
 def backtest_sequential(
@@ -246,16 +179,28 @@ def backtest_sequential(
 
 
 if __name__ == "__main__":
+    # Modify to be BYOD (Bring Your Own Data)
+    # Create config that specifies data paths + parameters
+    # - lambda: dynamic
+    # - target_active_risk: 5
+    # - constraints:
+    #   - long_only
+    #   - full_investment
+    # - objective: max_utility
+    # - signals:
+    #   - reversal
+    # - signal_combinator: risk_parity
+
     alphas = load_data("alphas")
     benchmark_weights = load_data("benchmark_weights")
 
     lambda_ = "dynamic"
-    target_active_risk = 0.05 # 5% annually
+    target_active_risk = 0.05  # 5% annually
 
     weights, metrics = backtest_parallel(
         alphas, benchmark_weights, lambda_, target_active_risk
     )
 
-    active_risk_str = str(int(target_active_risk*100))
+    active_risk_str = str(int(target_active_risk * 100))
     weights.write_parquet(f"nt_backtester/data/weights_star_{active_risk_str}.parquet")
     metrics.write_parquet(f"nt_backtester/data/metrics_star_{active_risk_str}.parquet")

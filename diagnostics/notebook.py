@@ -11,12 +11,13 @@ def _():
     import altair as alt
     import statsmodels.formula.api as smf
     import datetime as dt
+
     return alt, dt, mo, pl, smf
 
 
 @app.cell
 def _():
-    root = "" # ../
+    root = ""  # ../
     active_risk_str = "5"
     return active_risk_str, root
 
@@ -26,12 +27,13 @@ def _(mo):
     def marimo_print(object):
         with mo.redirect_stdout():
             print(object)
+
     return (marimo_print,)
 
 
 @app.cell
 def _(dt, mo):
-    start = dt.date(2022, 7, 29) # Beginning of non-zero idio_vol data
+    start = dt.date(2022, 7, 29)  # Beginning of non-zero idio_vol data
     end = dt.date(2025, 12, 31)
 
     view_start = mo.ui.date(label="Start Date", start=start, stop=end, value=start)
@@ -41,12 +43,18 @@ def _(dt, mo):
 
 @app.cell
 def _(active_risk_str, pl, root, view_end, view_start):
-    weights = pl.read_parquet(f"{root}nt_backtester/data/weights_star_{active_risk_str}.parquet")
+    weights = pl.read_parquet(
+        f"{root}nt_backtester/data/weights_star_{active_risk_str}.parquet"
+    )
 
-    metrics = pl.read_parquet(
-        f"{root}nt_backtester/data/metrics_star_{active_risk_str}.parquet"
-    ).with_columns(pl.col("active_risk").mul(100)).filter(pl.col("date").is_between(view_start.value, view_end.value)).sort('date')
-
+    metrics = (
+        pl.read_parquet(
+            f"{root}nt_backtester/data/metrics_star_{active_risk_str}.parquet"
+        )
+        .with_columns(pl.col("active_risk").mul(100))
+        .filter(pl.col("date").is_between(view_start.value, view_end.value))
+        .sort("date")
+    )
 
     returns = (
         pl.read_parquet(f"{root}nt_backtester/data/stock_returns.parquet")
@@ -193,12 +201,10 @@ def _(mo):
 def _(benchmark_returns, pl, reversal_returns):
     active_regression_data = (
         pl.concat([reversal_returns, benchmark_returns])
-        .with_columns(
-            pl.col('return').mul(100 * 252)
-        )
-        .pivot(on='portfolio', index='date', values='return')
-        .rename({'Reversal': 'portfolio_return', 'Benchmark': 'benchmark_return'})
-        .sort('date')
+        .with_columns(pl.col("return").mul(100 * 252))
+        .pivot(on="portfolio", index="date", values="return")
+        .rename({"Reversal": "portfolio_return", "Benchmark": "benchmark_return"})
+        .sort("date")
     )
     return (active_regression_data,)
 

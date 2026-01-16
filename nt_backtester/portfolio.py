@@ -44,6 +44,40 @@ def get_optimal_weights(
     return pl.DataFrame({"ticker": tickers, "weight": optimal_weights})
 
 
+def predict_lambda(data: list[tuple[float]], active_risk: float) -> float:
+    def fit_model(data: np.ndarray) -> float:
+        lambda_ = data[:, 0]
+        sigma = data[:, 1]
+
+        X = 1 / (2 * lambda_)
+
+        M = np.dot(X, sigma) / np.dot(X, X)
+
+        return M
+
+    data = np.array(data)
+
+    M = fit_model(data)
+
+    return M / (2 * active_risk)
+
+
+def get_active_weights(
+    weights: pl.DataFrame, benchmark_weights: pl.DataFrame
+) -> pl.DataFrame:
+    return (
+        weights.join(
+            other=benchmark_weights.rename({"weight": "benchmark_weight"}).drop("date"),
+            on=["ticker"],
+            how="left",
+        )
+        .with_columns(
+            pl.col("weight").sub(pl.col("benchmark_weight")).alias("active_weight")
+        )
+        .select("ticker", "active_weight")
+    )
+
+
 def get_active_risk(
     active_weights: pl.DataFrame, covariance_matrix: pl.DataFrame
 ) -> float:
@@ -51,3 +85,37 @@ def get_active_risk(
     covariance_matrix = covariance_matrix.drop("ticker").to_numpy()
 
     return np.sqrt(active_weights @ covariance_matrix @ active_weights.T) * np.sqrt(252)
+
+
+def get_optimal_weights_dynamic(
+    alphas: pl.DataFrame,
+    covariance_matrix: pl.DataFrame,
+    benchmark_weights: pl.DataFrame,
+    target_active_risk: float = 0.05,
+):
+    active_risk = float("inf")
+    lambda_ = None
+    error = 0.005
+    max_iterations = 5
+    iterations = 1
+    data = []
+
+    while abs(active_risk - target_active_risk) > error:
+        if lambda_ is None:
+            lambda_ = 100
+        else:
+            lambda_ = predict_lambda(data, target_active_risk)
+
+        optimal_weights = get_optimal_weights(alphas, covariance_matrix, lambda_)
+
+        active_weights = get_active_weights(optimal_weights, benchmark_weights)
+        active_risk = get_active_risk(active_weights, covariance_matrix)
+
+        data.append((lambda_, active_risk))
+
+        if iterations >= max_iterations:
+            break
+        else:
+            iterations += 1
+
+    return optimal_weights, lambda_, active_risk
