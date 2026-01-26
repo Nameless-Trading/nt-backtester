@@ -21,6 +21,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "altair>=6.0.0",
-    "marimo>=0.18.4",
+    "marimo>=0.19.6",
     "pyzmq>=27.1.0",
 ]
